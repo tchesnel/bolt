@@ -176,7 +176,7 @@ export function Dashboard({ snapshot }: { snapshot: MarketSnapshot | null }) {
                 <span className={`flex items-center gap-1 font-mono font-bold ${dirColor(plan.direction)}`}>{dirIcon(plan.direction)} {dirLabel(plan.direction)}</span>
               </div>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-zinc-400">Confiance calibrée</span>
+                <span className="text-xs text-zinc-400">Confiance heuristique</span>
                 <span className="font-mono font-bold">{Math.round(plan.confidence * 100)}%</span>
               </div>
               <div className="flex items-center justify-between mb-2">
@@ -455,22 +455,27 @@ export function Dashboard({ snapshot }: { snapshot: MarketSnapshot | null }) {
               <div className="pt-2 border-t border-zinc-800 space-y-1.5">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-zinc-400">DXY</span>
-                  <span className={`font-mono ${snapshot.correlations.dxy < -0.5 ? 'text-emerald-400' : 'text-rose-400'}`}>{snapshot.correlations.dxy.toFixed(2)}</span>
+                  <span className={`font-mono ${snapshot.correlations.dxy === 0 ? 'text-zinc-600' : snapshot.correlations.dxy < -0.5 ? 'text-emerald-400' : 'text-rose-400'}`}>{snapshot.correlations.dxy === 0 ? 'N/A' : snapshot.correlations.dxy.toFixed(2)}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-zinc-400">Real Yields 10Y</span>
-                  <span className={`font-mono ${snapshot.correlations.realYields10y < -0.5 ? 'text-emerald-400' : 'text-rose-400'}`}>{snapshot.correlations.realYields10y.toFixed(2)}</span>
+                  <span className={`font-mono ${snapshot.correlations.realYields10y === 0 ? 'text-zinc-600' : snapshot.correlations.realYields10y < -0.5 ? 'text-emerald-400' : 'text-rose-400'}`}>{snapshot.correlations.realYields10y === 0 ? 'N/A' : snapshot.correlations.realYields10y.toFixed(2)}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-zinc-400">Silver</span>
-                  <span className="font-mono text-zinc-300">{snapshot.correlations.silver.toFixed(2)}</span>
+                  <span className="font-mono text-zinc-300">{snapshot.correlations.silver === 0 ? 'N/A' : snapshot.correlations.silver.toFixed(2)}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-zinc-400">VIX</span>
-                  <span className="font-mono text-zinc-300">{snapshot.correlations.vix.toFixed(2)}</span>
+                  <span className="font-mono text-zinc-300">{snapshot.correlations.vix === 0 ? 'N/A' : snapshot.correlations.vix.toFixed(2)}</span>
                 </div>
                 {snapshot.correlations.broken && (
                   <div className="flex items-center gap-1.5 text-[10px] text-amber-400 mt-1">
+                    <AlertTriangle className="w-3 h-3" /> {snapshot.correlations.regimeNote}
+                  </div>
+                )}
+                {snapshot.correlations.dxy === 0 && (
+                  <div className="flex items-center gap-1.5 text-[10px] text-zinc-600 mt-1">
                     <AlertTriangle className="w-3 h-3" /> {snapshot.correlations.regimeNote}
                   </div>
                 )}
@@ -482,6 +487,12 @@ export function Dashboard({ snapshot }: { snapshot: MarketSnapshot | null }) {
         {/* Options & Volatility */}
         <div className="col-span-12 lg:col-span-6 xl:col-span-4">
           <Panel title="Options & Volatility" icon={<Gauge className="w-4 h-4" />}>
+            {snapshot.options.ivATM === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 gap-2">
+                <AlertTriangle className="w-5 h-5 text-zinc-600" />
+                <div className="text-xs text-zinc-500 text-center max-w-[200px]">{snapshot.options.note}</div>
+              </div>
+            ) : (
             <div className="space-y-2">
               <div className="grid grid-cols-2 gap-2">
                 <div className="p-2 rounded-lg bg-zinc-800/50">
@@ -515,6 +526,7 @@ export function Dashboard({ snapshot }: { snapshot: MarketSnapshot | null }) {
                 </div>
               </div>
             </div>
+            )}
           </Panel>
         </div>
 
@@ -641,9 +653,8 @@ export function Dashboard({ snapshot }: { snapshot: MarketSnapshot | null }) {
 
       {/* Footer */}
       <footer className="border-t border-zinc-800 px-6 py-3 mt-4">
-        <div className="text-[10px] text-zinc-600 text-center">
-          XAU/USD Quant Engine — Multi-agent probabilistic decision system. Not financial advice.
-          All probabilities are model estimates, not guarantees.
+        <div className="text-[10px] text-zinc-600 text-center max-w-[800px] mx-auto">
+          XAU/USD Quant Engine — Multi-agent heuristic decision system. Probabilities shown are heuristic estimates from deterministic rules, NOT statistically calibrated forecasts. External data feeds (DXY, real yields, options, news, geopolitical) are not yet connected. Price data is simulated for demonstration. Not financial advice.
         </div>
       </footer>
     </div>

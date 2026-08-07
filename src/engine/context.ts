@@ -53,79 +53,75 @@ export function detectRegime(candles: Record<Timeframe, Candle[]>): { regime: Re
 }
 
 export function computeCorrelations(candles: Candle[]): CorrelationState {
-  // Simulated dynamic correlations based on recent price action
-  const returns: number[] = [];
-  for (let i = 1; i < candles.length; i++) {
-    if (candles[i - 1].close !== 0) {
-      returns.push((candles[i].close - candles[i - 1].close) / candles[i - 1].close);
-    }
-  }
-  const recent = returns.slice(-20);
-  const meanRet = recent.reduce((s, v) => s + v, 0) / Math.max(1, recent.length);
-  const trendUp = meanRet > 0.0001;
-
-  // DXY typically inversely correlated with gold
-  const dxy = trendUp ? -0.72 : -0.65;
-  const realYields10y = trendUp ? -0.68 : -0.55;
-  const nominal10y = trendUp ? -0.45 : -0.38;
-  const sp500 = Math.abs(meanRet) > 0.0002 ? 0.15 : 0.25;
-  const silver = 0.78;
-  const vix = trendUp ? -0.25 : 0.15;
-
-  const recentCorr = Math.abs(dxy + 0.72) < 0.1 ? -0.72 : dxy + (Math.random() - 0.5) * 0.2;
-  const broken = Math.abs(recentCorr - dxy) > 0.15;
+  // HONEST DISCLOSURE: real DXY, real yields, S&P 500, VIX and silver data
+  // are NOT available in this environment. These values cannot be fetched
+  // live without external API keys and licensed market data feeds.
+  //
+  // The previous implementation derived DXY FROM gold's own price action
+  // (trendUp ? -0.72 : -0.65), which is circular: the correlation agent
+  // then used that fabricated DXY to "confirm" the gold move. That
+  // artificially inflated confidence.
+  //
+  // Until real external data feeds are connected, this engine reports
+  // correlations as UNKNOWN and the correlation agent will produce a
+  // neutral, low-confidence signal — it will NOT pretend to have market
+  // data it does not have.
+  const _ = candles; // unused until real feeds are wired
 
   return {
-    dxy: Math.round(dxy * 100) / 100,
-    realYields10y: Math.round(realYields10y * 100) / 100,
-    nominal10y: Math.round(nominal10y * 100) / 100,
-    sp500: Math.round(sp500 * 100) / 100,
-    silver: Math.round(silver * 100) / 100,
-    vix: Math.round(vix * 100) / 100,
-    regimeNote: broken ? 'Correlation regime break detected' : 'Correlations stable',
-    broken,
+    dxy: 0,
+    realYields10y: 0,
+    nominal10y: 0,
+    sp500: 0,
+    silver: 0,
+    vix: 0,
+    regimeNote: 'External data feeds not connected — correlations unavailable',
+    broken: false,
   };
 }
 
 export function computeOptionsState(candles: Candle[], currentPrice: number): OptionsState {
-  const rv = realizedVol(candles, 20);
-  const ivATM = Math.round((rv * 15 + 0.12) * 10000) / 100;
-
-  // Simulated skew
-  const recent = candles.slice(-10);
-  const bullish = recent[recent.length - 1].close > recent[0].open;
-  const skew = bullish ? 'bullish' : 'bearish';
-  const skewChange24h = Math.round((bullish ? 2.1 : -1.8) * 10) / 10;
-  const skewPercentile = Math.round((bullish ? 68 : 34));
-
-  // Strike-based pinning/walls near round numbers
-  const round = Math.round(currentPrice / 5) * 5;
-  const pinning = [round - 5, round, round + 5, round + 10];
-  const walls = bullish ? [round + 10, round + 15] : [round - 5, round - 10];
+  // HONEST DISCLOSURE: real options data (IV, skew, gamma, open interest by
+  // strike, option walls) requires a licensed options data feed (e.g. CME MDP,
+  // OPRA). This environment has no such feed.
+  //
+  // The previous implementation fabricated skew, gamma, pinning zones and
+  // option walls from candle OHLC and round numbers. That is not real
+  // options market data — it was a decorative approximation.
+  //
+  // Until a real options feed is connected, this engine reports options
+  // state as unavailable and the options agent will produce a neutral,
+  // low-confidence signal.
+  const _ = candles;
+  const _p = currentPrice;
 
   return {
-    ivATM,
-    skew,
-    skewChange24h,
-    skewPercentile,
-    pinning,
-    walls,
-    gamma: Math.round((bullish ? 1.2 : -0.8) * 100) / 100,
-    note: skew === 'bullish'
-      ? 'Call skew elevated — demand for upside protection/capture'
-      : 'Put skew elevated — demand for downside protection',
+    ivATM: 0,
+    skew: 'neutral',
+    skewChange24h: 0,
+    skewPercentile: 0,
+    pinning: [],
+    walls: [],
+    gamma: 0,
+    note: 'Options data feed not connected — IV, skew, gamma and OI unavailable',
   };
 }
 
+// HONEST DISCLOSURE: these are ILLUSTRATIVE macro events, NOT a live
+// economic calendar. A real implementation would fetch from a licensed
+// calendar API (e.g. Investing.com, Trading Economics, Bloomberg).
+// Until that feed is connected, these entries serve only to demonstrate
+// the engine's event-handling logic. They must not be treated as real
+// upcoming events.
 const MACRO_EVENTS: Omit<MacroEvent, 'minutesUntil'>[] = [
-  { time: 0, name: 'CPI (Core)', impact: 'high', consensus: '+0.3% m/m', actual: null, currency: 'USD' },
-  { time: 0, name: 'Jobless Claims', impact: 'medium', consensus: '221K', actual: null, currency: 'USD' },
-  { time: 0, name: 'Fed Chair Speech', impact: 'high', consensus: '—', actual: null, currency: 'USD' },
-  { time: 0, name: 'NFP', impact: 'high', consensus: '+180K', actual: null, currency: 'USD' },
-  { time: 0, name: 'FOMC Minutes', impact: 'high', consensus: '—', actual: null, currency: 'USD' },
-  { time: 0, name: 'PCE Price Index', impact: 'high', consensus: '+0.2% m/m', actual: null, currency: 'USD' },
-  { time: 0, name: 'ISM Manufacturing PMI', impact: 'medium', consensus: '48.5', actual: null, currency: 'USD' },
-  { time: 0, name: 'Retail Sales', impact: 'medium', consensus: '+0.4% m/m', actual: null, currency: 'USD' },
+  { time: 0, name: 'CPI (Core) [ILLUSTRATIVE]', impact: 'high', consensus: '+0.3% m/m', actual: null, currency: 'USD' },
+  { time: 0, name: 'Jobless Claims [ILLUSTRATIVE]', impact: 'medium', consensus: '221K', actual: null, currency: 'USD' },
+  { time: 0, name: 'Fed Chair Speech [ILLUSTRATIVE]', impact: 'high', consensus: '—', actual: null, currency: 'USD' },
+  { time: 0, name: 'NFP [ILLUSTRATIVE]', impact: 'high', consensus: '+180K', actual: null, currency: 'USD' },
+  { time: 0, name: 'FOMC Minutes [ILLUSTRATIVE]', impact: 'high', consensus: '—', actual: null, currency: 'USD' },
+  { time: 0, name: 'PCE Price Index [ILLUSTRATIVE]', impact: 'high', consensus: '+0.2% m/m', actual: null, currency: 'USD' },
+  { time: 0, name: 'ISM Manufacturing PMI [ILLUSTRATIVE]', impact: 'medium', consensus: '48.5', actual: null, currency: 'USD' },
+  { time: 0, name: 'Retail Sales [ILLUSTRATIVE]', impact: 'medium', consensus: '+0.4% m/m', actual: null, currency: 'USD' },
 ];
 
 export function generateMacroEvents(currentTime: number): MacroEvent[] {
@@ -142,12 +138,17 @@ export function generateMacroEvents(currentTime: number): MacroEvent[] {
   return events.sort((a, b) => a.minutesUntil - b.minutesUntil);
 }
 
+// HONEST DISCLOSURE: these are ILLUSTRATIVE news headlines, NOT live
+// news from a licensed wire service. A real implementation would ingest
+// from Reuters/Bloomberg/AP feeds or a news API. Until that feed is
+// connected, these serve only to demonstrate the engine's news-processing
+// logic. They must not be treated as real current events.
 const NEWS_TEMPLATES = [
-  { headline: 'Fed official says rate cuts could begin "in coming months" if data cooperates', source: 'Reuters', sourceLevel: 2 as const, dir: 1 as const },
-  { headline: 'Middle East tensions escalate after maritime incident reported', source: 'AP', sourceLevel: 2 as const, dir: 1 as const },
-  { headline: 'Treasury yields rise as strong services PMI beats expectations', source: 'Bloomberg', sourceLevel: 2 as const, dir: -1 as const },
-  { headline: 'Central bank gold buying continues for 18th consecutive month', source: 'World Gold Council', sourceLevel: 1 as const, dir: 1 as const },
-  { headline: 'Dollar index firms as risk appetite wanes in European session', source: 'FXStreet', sourceLevel: 3 as const, dir: -1 as const },
+  { headline: '[ILLUSTRATIVE] Fed official says rate cuts could begin "in coming months" if data cooperates', source: 'Reuters (demo)', sourceLevel: 2 as const, dir: 1 as const },
+  { headline: '[ILLUSTRATIVE] Middle East tensions escalate after maritime incident reported', source: 'AP (demo)', sourceLevel: 2 as const, dir: 1 as const },
+  { headline: '[ILLUSTRATIVE] Treasury yields rise as strong services PMI beats expectations', source: 'Bloomberg (demo)', sourceLevel: 2 as const, dir: -1 as const },
+  { headline: '[ILLUSTRATIVE] Central bank gold buying continues for 18th consecutive month', source: 'World Gold Council (demo)', sourceLevel: 1 as const, dir: 1 as const },
+  { headline: '[ILLUSTRATIVE] Dollar index firms as risk appetite wanes in European session', source: 'FXStreet (demo)', sourceLevel: 3 as const, dir: -1 as const },
 ];
 
 export function generateNews(currentTime: number, count: number = 4): NewsItem[] {
@@ -168,6 +169,12 @@ export function generateNews(currentTime: number, count: number = 4): NewsItem[]
   return items;
 }
 
+// HONEST DISCLOSURE: these are ILLUSTRATIVE geopolitical events, NOT live
+// monitoring. A real implementation would ingest from GDELT, UKMTO alerts,
+// official government feeds, and verified news wires with source-tier
+// classification. Until those feeds are connected, these serve only to
+// demonstrate the engine's event-scoring logic. They must not be treated
+// as real current geopolitical events.
 const GEO_TEMPLATES: Omit<GeoEvent, 'score'>[] = [
   {
     eventType: 'maritime_attack',

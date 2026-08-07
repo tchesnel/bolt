@@ -84,7 +84,10 @@ export function detectStructureEvents(swings: SwingPoint[]): { bias: StructureBi
     }
   } else if (lh && ll) {
     bias = 'bearish';
-    if (lastLow.time < prevLow.time) {
+    // A bearish BOS is confirmed when the most recent low breaks below the
+    // previous low. lastLow is the most recent swing, so its time should be
+    // AFTER prevLow's time — the condition was inverted.
+    if (lastLow.time > prevLow.time) {
       lastEvent = { type: 'BOS', direction: 'bearish', level: prevLow.price, time: lastLow.time, confirmed: true };
     }
   } else if (lh && hl) {
@@ -138,7 +141,10 @@ export function detectFVGs(candles: Candle[], timeframe: Timeframe): FVG[] {
       const size = top - bottom;
       const atrRatio = size / atrVal;
       if (atrRatio > 0.3) {
-        const fills = countFills(candles, i + 1, top, bottom);
+        // Start counting fills from i+2, not i+1 — candle i+1 is part of
+        // the 3-candle formation that CREATES the gap, so it must not count
+        // as a fill of its own gap.
+        const fills = countFills(candles, i + 2, top, bottom);
         const status = fills === 0 ? 'fresh' : fills >= 1 && fills < 2 ? 'touched' : fills >= 2 ? 'mitigated' : 'invalidated';
         fvgs.push({
           id: `fvg-${timeframe}-${i}`,
@@ -165,7 +171,7 @@ export function detectFVGs(candles: Candle[], timeframe: Timeframe): FVG[] {
       const size = top - bottom;
       const atrRatio = size / atrVal;
       if (atrRatio > 0.3) {
-        const fills = countFills(candles, i + 1, top, bottom);
+        const fills = countFills(candles, i + 2, top, bottom);
         const status = fills === 0 ? 'fresh' : fills >= 1 && fills < 2 ? 'touched' : fills >= 2 ? 'mitigated' : 'invalidated';
         fvgs.push({
           id: `fvg-${timeframe}-${i}`,

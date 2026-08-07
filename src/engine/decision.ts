@@ -99,11 +99,26 @@ function microAgent(m: MicrostructureState): AgentSignal {
 }
 
 function correlationAgent(c: CorrelationState): AgentSignal {
+  // When external data feeds are not connected, correlations are 0 / unavailable.
+  // This agent must NOT fabricate a directional signal from missing data.
+  if (c.dxy === 0 && c.realYields10y === 0) {
+    return {
+      agent: 'Correlations',
+      direction: 0,
+      confidence: 0.15,
+      dataQuality: 0.1, // no real data
+      freshness: 0.1,
+      regimeCompat: 0.3,
+      weight: 0,
+      note: 'External feeds not connected — correlation signal disabled',
+      raw: 0,
+    };
+  }
+
   let dir: Direction = 0;
   let conf = 0.4;
   let note = `DXY ${c.dxy}, RealYields ${c.realYields10y}`;
 
-  // DXY down -> gold up, real yields down -> gold up
   if (c.dxy < -0.6 && c.realYields10y < -0.5) {
     dir = 1;
     conf = 0.65;
@@ -133,6 +148,22 @@ function correlationAgent(c: CorrelationState): AgentSignal {
 }
 
 function optionsAgent(o: OptionsState): AgentSignal {
+  // When no options data feed is connected, IV is 0 and skew is neutral.
+  // This agent must NOT fabricate a directional signal from missing data.
+  if (o.ivATM === 0) {
+    return {
+      agent: 'Options',
+      direction: 0,
+      confidence: 0.1,
+      dataQuality: 0.1, // no real data
+      freshness: 0.1,
+      regimeCompat: 0.3,
+      weight: 0,
+      note: 'Options feed not connected — options signal disabled',
+      raw: 0,
+    };
+  }
+
   let dir: Direction = 0;
   let conf = 0.35;
   let note = o.note;
@@ -223,14 +254,17 @@ function liquidityAgent(structure: StructureState, price: number): AgentSignal {
   let conf = 0.4;
   let note = 'Balanced liquidity';
 
-  if (nearestBelow && nearestBelow.distance < (nearestAbove?.distance ?? Infinity)) {
+  // Price tends to move TOWARD the nearest liquidity pool to sweep it.
+  // Liquidity above = price likely to rise toward it = BUY bias.
+  // Liquidity below = price likely to fall toward it = SELL bias.
+  if (nearestAbove && nearestAbove.distance < (nearestBelow?.distance ?? Infinity)) {
     dir = 1;
-    conf = nearestBelow.targetProb;
-    note = `Likely targeting ${nearestBelow.type} @ ${nearestBelow.level}`;
-  } else if (nearestAbove) {
-    dir = -1;
     conf = nearestAbove.targetProb;
-    note = `Likely targeting ${nearestAbove.type} @ ${nearestAbove.level}`;
+    note = `Likely targeting ${nearestAbove.type} @ ${nearestAbove.level} (above)`;
+  } else if (nearestBelow) {
+    dir = -1;
+    conf = nearestBelow.targetProb;
+    note = `Likely targeting ${nearestBelow.type} @ ${nearestBelow.level} (below)`;
   }
 
   return {
@@ -270,7 +304,6 @@ export function fuseAgents(input: AgentInput): AgentSignal[] {
 export function buildScenarios(input: AgentInput, agents: AgentSignal[]): Scenario[] {
   const price = input.price;
   const atrVal = atr(input.candles.H1, 14) || 5;
-  const structure = input.structure.H1;
 
   const totalSignal = agents.reduce((s, a) => s + a.raw * a.weight, 0);
   const totalWeight = agents.reduce((s, a) => s + a.weight, 0);
@@ -282,62 +315,56 @@ export function buildScenarios(input: AgentInput, agents: AgentSignal[]): Scenar
 
   // Normalize to sum 1
   const sum = bullProb + bearProb + neutralProb;
-  const p1 = Math.round((bullProb / sum) * 100) / 100;
-  const p2 = Math.round((bearProb / sum) * 100) / 100;
-  const p3 = Math.max(0, Math.round((1 - p1 - p2) * 100) / 100);
+  const pBull = Math.round((bullProb / sum) * 100) / 100;
+  const pBear = Math.round((bearProb / sum) * 100) / 100;
+  const pNeutral = Math.max(0, Math.round((1 - pBull - pBear) * 100) / 100);
 
-  const triggerLevel = Math.round((price + atrVal * 0.3) * 100) / 100;
-  const invLevel = Math.round((price - atrVal * 1.2) * 100) / 100;
-  const entryLow = Math.round((price - atrVal * 0.1) * 100) / 100;
-  const entryHigh = Math.round((price + atrVal * 0.2) * 100) / 100;
-
-  const tp1 = Math.round((price + atrVal * 1.2) * 100) / 100;
-  const tp2 = Math.round((price + atrVal * 2.5) * 100) / 100;
-  const tp3 = Math.round((price + atrVal * 4) * 100) / 100;
-
-  const tp1b = Math.round((price - atrVal * 1.2) * 100) / 100;
-  const tp2b = Math.round((price - atrVal * 2.5) * 100) / 100;
-  const tp3b = Math.round((price - atrVal * 4) * 100) / 100;
-
-  const risk = Math.abs(price - invLevel);
-
-  const main: Scenario = {
-    name: 'Scenario principal',
-    probability: p1,
+  // Build directional scenarios — the dominant direction becomes "principal".
+  const bullScenario: Scenario = {
+    name: 'Scénario haussier',
+    probability: pBull,
     direction: 1,
-    trigger: `Clôture M5 au-dessus de ${triggerLevel}`,
-    entry: [entryLow, entryHigh],
-    invalidation: invLevel,
-    targets: [tp1, tp2, tp3],
+    trigger: `Clôture M5 au-dessus de ${Math.round((price + atrVal * 0.3) * 100) / 100}`,
+    entry: [Math.round((price - atrVal * 0.1) * 100) / 100, Math.round((price + atrVal * 0.2) * 100) / 100],
+    invalidation: Math.round((price - atrVal * 1.2) * 100) / 100,
+    targets: [
+      Math.round((price + atrVal * 1.2) * 100) / 100,
+      Math.round((price + atrVal * 2.5) * 100) / 100,
+      Math.round((price + atrVal * 4) * 100) / 100,
+    ],
     rR: [
-      Math.round((Math.abs(tp1 - price) / risk) * 10) / 10,
-      Math.round((Math.abs(tp2 - price) / risk) * 10) / 10,
-      Math.round((Math.abs(tp3 - price) / risk) * 10) / 10,
+      Math.round((atrVal * 1.2 / (atrVal * 1.2)) * 10) / 10,
+      Math.round((atrVal * 2.5 / (atrVal * 1.2)) * 10) / 10,
+      Math.round((atrVal * 4 / (atrVal * 1.2)) * 10) / 10,
     ],
     note: 'Continuation haussière après sweep et MSS',
   };
 
-  const alt: Scenario = {
-    name: 'Scenario alternatif',
-    probability: p2,
+  const bearScenario: Scenario = {
+    name: 'Scénario baissier',
+    probability: pBear,
     direction: -1,
-    trigger: `Rejet sous ${triggerLevel} puis cassure ${invLevel}`,
-    entry: [Math.round((price + atrVal * 0.1) * 100) / 100, Math.round((price - atrVal * 0.2) * 100) / 100],
+    trigger: `Clôture M5 sous ${Math.round((price - atrVal * 0.3) * 100) / 100}`,
+    entry: [Math.round((price - atrVal * 0.2) * 100) / 100, Math.round((price + atrVal * 0.1) * 100) / 100],
     invalidation: Math.round((price + atrVal * 1.2) * 100) / 100,
-    targets: [tp1b, tp2b, tp3b],
+    targets: [
+      Math.round((price - atrVal * 1.2) * 100) / 100,
+      Math.round((price - atrVal * 2.5) * 100) / 100,
+      Math.round((price - atrVal * 4) * 100) / 100,
+    ],
     rR: [
-      Math.round((Math.abs(price - tp1b) / risk) * 10) / 10,
-      Math.round((Math.abs(price - tp2b) / risk) * 10) / 10,
-      Math.round((Math.abs(price - tp3b) / risk) * 10) / 10,
+      Math.round((atrVal * 1.2 / (atrVal * 1.2)) * 10) / 10,
+      Math.round((atrVal * 2.5 / (atrVal * 1.2)) * 10) / 10,
+      Math.round((atrVal * 4 / (atrVal * 1.2)) * 10) / 10,
     ],
     note: 'Rejet et retournement baissier',
   };
 
   const neutral: Scenario = {
-    name: 'Scenario de neutralité',
-    probability: p3,
+    name: 'Scénario de neutralité',
+    probability: pNeutral,
     direction: 0,
-    trigger: `Prix coincé entre ${invLevel} et ${triggerLevel}`,
+    trigger: `Prix coincé entre ${Math.round((price - atrVal * 1.2) * 100) / 100} et ${Math.round((price + atrVal * 0.3) * 100) / 100}`,
     entry: [0, 0],
     invalidation: 0,
     targets: [],
@@ -345,7 +372,17 @@ export function buildScenarios(input: AgentInput, agents: AgentSignal[]): Scenar
     note: 'Aucun trade — attendre résolution',
   };
 
-  return [main, alt, neutral];
+  // The dominant directional scenario is "principal", the other is "alternatif".
+  // This is the critical fix: if bearish probability > bullish, SELL is the main scenario.
+  if (pBull >= pBear) {
+    bullScenario.name = 'Scénario principal';
+    bearScenario.name = 'Scénario alternatif';
+    return [bullScenario, bearScenario, neutral];
+  } else {
+    bearScenario.name = 'Scénario principal';
+    bullScenario.name = 'Scénario alternatif';
+    return [bearScenario, bullScenario, neutral];
+  }
 }
 
 export function computeEV(scenarios: Scenario[], stop: number, entry: number): number {
@@ -469,8 +506,9 @@ export function buildTradePlan(input: AgentInput, agents: AgentSignal[], scenari
   const stop = main.invalidation;
   const entry = main.entry;
   const targets = main.targets;
-  const risk = Math.abs((entry[0] + entry[1]) / 2 - stop);
-  const rR = targets.map((t) => Math.round(Math.abs(t - (entry[0] + entry[1]) / 2) / risk * 10) / 10);
+  const entryMid = (entry[0] + entry[1]) / 2;
+  const risk = Math.abs(entryMid - stop);
+  const rR = targets.map((t) => Math.round(Math.abs(t - entryMid) / risk * 10) / 10);
 
   const macroStr = input.macro[0]?.minutesUntil < 60
     ? `Légèrement risqué — ${input.macro[0].name} dans ${input.macro[0].minutesUntil}min`
